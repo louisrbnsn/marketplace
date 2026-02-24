@@ -469,6 +469,8 @@ export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   user: one(users, {
     fields: [subscriptions.userId],
     references: [users.id],
+  }),
+}))
 
 export const paymentMethodsRelations = relations(paymentMethods, ({ one }) => ({
   user: one(users, {
