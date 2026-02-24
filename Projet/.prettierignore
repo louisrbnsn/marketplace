@@ -1,0 +1,10 @@
+**/.git
+**/.next
+**/node_modules
+**/out
+**/dist
+**/build
+**/.turbo
+**/.vercel
+**/coverage
+**/.nyc_output
