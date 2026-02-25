@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { users } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
 
 /**
  * GET /api/seller/status
@@ -19,17 +16,17 @@ export async function GET() {
     }
 
     // Get user from database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .single()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    if (!user.stripeConnectId) {
+    if (!user.stripe_connect_id) {
       return NextResponse.json({
         connected: false,
         detailsSubmitted: false,
@@ -39,7 +36,7 @@ export async function GET() {
     }
 
     // Get account details from Stripe
-    const account = await stripe.accounts.retrieve(user.stripeConnectId)
+    const account = await stripe.accounts.retrieve(user.stripe_connect_id)
 
     return NextResponse.json({
       connected: true,

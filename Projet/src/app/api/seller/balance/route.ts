@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { users, orderItems } from '@/lib/db/schema'
-import { eq, and, sql } from 'drizzle-orm'
 
 /**
  * GET /api/seller/balance
@@ -19,49 +16,41 @@ export async function GET() {
     }
 
     // Get user from database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .single()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Get balance from database (sum of all completed order items)
-    const result = await db
-      .select({
-        totalEarnings: sql<number>`COALESCE(SUM(${orderItems.sellerAmount}), 0)`,
-        totalSales: sql<number>`COUNT(*)`,
-      })
-      .from(orderItems)
-      .where(eq(orderItems.sellerId, authUser.id))
+    const { data: totalData } = await supabase
+      .from('order_items')
+      .select('seller_amount')
+      .eq('seller_id', authUser.id)
 
-    const { totalEarnings = 0, totalSales = 0 } = result[0] || {}
+    const totalEarnings = totalData?.reduce((sum, item) => sum + (item.seller_amount || 0), 0) || 0
+    const totalSales = totalData?.length || 0
 
     // Get pending balance (items without transfer ID)
-    const pendingResult = await db
-      .select({
-        pendingAmount: sql<number>`COALESCE(SUM(${orderItems.sellerAmount}), 0)`,
-        pendingSales: sql<number>`COUNT(*)`,
-      })
-      .from(orderItems)
-      .where(
-        and(
-          eq(orderItems.sellerId, authUser.id),
-          sql`${orderItems.stripeTransferId} IS NULL`
-        )
-      )
+    const { data: pendingData } = await supabase
+      .from('order_items')
+      .select('seller_amount')
+      .eq('seller_id', authUser.id)
+      .is('stripe_transfer_id', null)
 
-    const { pendingAmount = 0, pendingSales = 0 } = pendingResult[0] || {}
+    const pendingAmount = pendingData?.reduce((sum, item) => sum + (item.seller_amount || 0), 0) || 0
+    const pendingSales = pendingData?.length || 0
 
     // Get available balance from Stripe if connected
     let stripeBalance = null
-    if (user.stripeConnectId) {
+    if (user.stripe_connect_id) {
       try {
         const balance = await stripe.balance.retrieve({
-          stripeAccount: user.stripeConnectId,
+          stripeAccount: user.stripe_connect_id,
         })
         stripeBalance = {
           available: balance.available,

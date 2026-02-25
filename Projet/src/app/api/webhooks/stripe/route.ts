@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { headers } from 'next/headers'
 import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase/admin'
-import { db } from '@/lib/db'
-import { orders, orderItems, users, products } from '@/lib/db/schema'
-import { eq, sql } from 'drizzle-orm'
 import Stripe from 'stripe'
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
@@ -73,21 +70,21 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
     // If we have an orderId, use our new approach
     if (orderId) {
       // Update order status
-      await db
-        .update(orders)
-        .set({
+      await supabaseAdmin
+        .from('orders')
+        .update({
           status: 'completed',
-          stripeChargeId: paymentIntent.latest_charge as string,
-          completedAt: new Date(),
-          updatedAt: new Date(),
+          stripe_charge_id: paymentIntent.latest_charge as string,
+          completed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         })
-        .where(eq(orders.id, orderId))
+        .eq('id', orderId)
 
       // Get order items
-      const items = await db
-        .select()
-        .from(orderItems)
-        .where(eq(orderItems.orderId, orderId))
+      const { data: items } = await supabaseAdmin
+        .from('order_items')
+        .select('*')
+        .eq('order_id', orderId)
 
       // Parse order items from metadata for seller distribution
       const orderItemsData = JSON.parse(metadata.orderItems || '[]')
@@ -109,12 +106,12 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
             })
 
             // Update order item with transfer ID
-            const orderItem = items.find((item: any) => item.productId === itemData.productId)
+            const orderItem = items?.find((item: any) => item.product_id === itemData.productId)
             if (orderItem) {
-              await db
-                .update(orderItems)
-                .set({ stripeTransferId: transfer.id })
-                .where(eq(orderItems.id, orderItem.id))
+              await supabaseAdmin
+                .from('order_items')
+                .update({ stripe_transfer_id: transfer.id })
+                .eq('id', orderItem.id)
             }
 
             console.log(`Transfer created: ${transfer.id} for product ${itemData.productId}`)
@@ -284,14 +281,14 @@ async function handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
     const orderId = paymentIntent.metadata.orderId
 
     if (orderId) {
-      // Update order status using Drizzle
-      await db
-        .update(orders)
-        .set({
+      // Update order status
+      await supabaseAdmin
+        .from('orders')
+        .update({
           status: 'failed',
-          updatedAt: new Date(),
+          updated_at: new Date().toISOString(),
         })
-        .where(eq(orders.id, orderId))
+        .eq('id', orderId)
     } else {
       // Legacy approach
       await supabaseAdmin

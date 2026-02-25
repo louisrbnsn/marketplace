@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe, PLATFORM_FEE_PERCENTAGE } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { users, paymentMethods, orders, orderItems } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,11 +13,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get full user data from database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .single()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
@@ -33,12 +30,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's Stripe customer ID or create one
-    let stripeCustomerId = user.stripeCustomerId
+    let stripeCustomerId = user.stripe_customer_id
 
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
         email: user.email,
-        name: user.fullName,
+        name: user.full_name,
         metadata: {
           userId: user.id,
         },
@@ -47,10 +44,10 @@ export async function POST(request: NextRequest) {
       stripeCustomerId = customer.id
 
       // Update user with Stripe customer ID
-      await db
-        .update(users)
-        .set({ stripeCustomerId })
-        .where(eq(users.id, user.id))
+      await supabase
+        .from('users')
+        .update({ stripe_customer_id: stripeCustomerId })
+        .eq('id', user.id)
     }
 
     // Get product details with sellers
@@ -115,30 +112,34 @@ export async function POST(request: NextRequest) {
     }
 
     // Create order in database
-    const [order] = await db
-      .insert(orders)
-      .values({
-        buyerId: user.id,
-        totalAmount,
-        platformFee: totalPlatformFee,
+    const { data: order, error: orderError } = await supabase
+      .from('orders')
+      .insert({
+        buyer_id: user.id,
+        total_amount: totalAmount,
+        platform_fee: totalPlatformFee,
         status: 'pending',
       })
-      .returning()
+      .select()
+      .single()
+
+    if (orderError || !order) {
+      return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
+    }
 
     // Insert order items
-    const insertedOrderItems = await db
-      .insert(orderItems)
-      .values(
+    await supabase
+      .from('order_items')
+      .insert(
         orderItemsData.map((item) => ({
-          orderId: order.id,
-          productId: item.productId,
-          sellerId: item.sellerId,
+          order_id: order.id,
+          product_id: item.productId,
+          seller_id: item.sellerId,
           price: item.price,
-          platformFee: item.platformFee,
-          sellerAmount: item.sellerAmount,
+          platform_fee: item.platformFee,
+          seller_amount: item.sellerAmount,
         }))
       )
-      .returning()
 
     // Prepare payment intent options
     const paymentIntentOptions: any = {
@@ -162,13 +163,13 @@ export async function POST(request: NextRequest) {
     // If payment method provided, use it
     if (paymentMethodId) {
       // Verify payment method belongs to user
-      const [userPaymentMethod] = await db
-        .select()
-        .from(paymentMethods)
-        .where(eq(paymentMethods.stripePaymentMethodId, paymentMethodId))
-        .limit(1)
+      const { data: userPaymentMethod } = await supabase
+        .from('payment_methods')
+        .select('*')
+        .eq('stripe_payment_method_id', paymentMethodId)
+        .single()
 
-      if (!userPaymentMethod || userPaymentMethod.userId !== user.id) {
+      if (!userPaymentMethod || userPaymentMethod.user_id !== user.id) {
         return NextResponse.json(
           { error: 'Invalid payment method' },
           { status: 400 }
@@ -189,10 +190,10 @@ export async function POST(request: NextRequest) {
     const paymentIntent = await stripe.paymentIntents.create(paymentIntentOptions)
 
     // Update order with payment intent ID
-    await db
-      .update(orders)
-      .set({ stripePaymentIntentId: paymentIntent.id })
-      .where(eq(orders.id, order.id))
+    await supabase
+      .from('orders')
+      .update({ stripe_payment_intent_id: paymentIntent.id })
+      .eq('id', order.id)
 
     return NextResponse.json({
       clientSecret: paymentIntent.client_secret,

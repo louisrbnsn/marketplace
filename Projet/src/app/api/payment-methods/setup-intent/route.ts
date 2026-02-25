@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { users } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
 
 /**
  * POST /api/payment-methods/setup-intent
@@ -19,23 +16,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .single()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Ensure user has a Stripe customer ID
-    let stripeCustomerId = user.stripeCustomerId
+    let stripeCustomerId = user.stripe_customer_id
 
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
         email: user.email,
-        name: user.fullName,
+        name: user.full_name,
         metadata: {
           userId: user.id,
         },
@@ -43,10 +40,10 @@ export async function POST(request: NextRequest) {
 
       stripeCustomerId = customer.id
 
-      await db
-        .update(users)
-        .set({ stripeCustomerId })
-        .where(eq(users.id, user.id))
+      await supabase
+        .from('users')
+        .update({ stripe_customer_id: stripeCustomerId })
+        .eq('id', user.id)
     }
 
     // Create setup intent

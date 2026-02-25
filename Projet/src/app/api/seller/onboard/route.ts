@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { db } from '@/lib/db'
-import { users } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
 import { createConnectAccount, createAccountLink } from '@/lib/stripe'
 
 /**
@@ -19,11 +16,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .single()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
@@ -33,16 +30,16 @@ export async function POST(request: NextRequest) {
     const refreshUrl = `${origin}/dashboard/store?onboarding=refresh`
     const returnUrl = `${origin}/dashboard/store?onboarding=complete`
 
-    let stripeConnectId = user.stripeConnectId
+    let stripeConnectId = user.stripe_connect_id
 
     // Create Connect account if doesn't exist
     if (!stripeConnectId) {
       stripeConnectId = await createConnectAccount(user.email, user.id)
       
-      await db
-        .update(users)
-        .set({ stripeConnectId })
-        .where(eq(users.id, user.id))
+      await supabase
+        .from('users')
+        .update({ stripe_connect_id: stripeConnectId })
+        .eq('id', user.id)
     }
 
     // Create account link

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { paymentMethods, users } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
 
 /**
  * PUT /api/payment-methods/[id]/default
@@ -24,16 +21,12 @@ export async function PUT(
     const paymentMethodId = params.id
 
     // Get payment method from database
-    const [method] = await db
-      .select()
-      .from(paymentMethods)
-      .where(
-        and(
-          eq(paymentMethods.id, paymentMethodId),
-          eq(paymentMethods.userId, authUser.id)
-        )
-      )
-      .limit(1)
+    const { data: method } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .eq('id', paymentMethodId)
+      .eq('user_id', authUser.id)
+      .single()
 
     if (!method) {
       return NextResponse.json(
@@ -43,13 +36,13 @@ export async function PUT(
     }
 
     // Get user
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('stripe_customer_id')
+      .eq('id', authUser.id)
+      .single()
 
-    if (!user?.stripeCustomerId) {
+    if (!user?.stripe_customer_id) {
       return NextResponse.json(
         { error: 'User has no Stripe customer ID' },
         { status: 400 }
@@ -57,23 +50,23 @@ export async function PUT(
     }
 
     // Update default in Stripe
-    await stripe.customers.update(user.stripeCustomerId, {
+    await stripe.customers.update(user.stripe_customer_id, {
       invoice_settings: {
-        default_payment_method: method.stripePaymentMethodId,
+        default_payment_method: method.stripe_payment_method_id,
       },
     })
 
     // Unset all other default methods
-    await db
-      .update(paymentMethods)
-      .set({ isDefault: false })
-      .where(eq(paymentMethods.userId, authUser.id))
+    await supabase
+      .from('payment_methods')
+      .update({ is_default: false })
+      .eq('user_id', authUser.id)
 
     // Set this one as default
-    await db
-      .update(paymentMethods)
-      .set({ isDefault: true })
-      .where(eq(paymentMethods.id, paymentMethodId))
+    await supabase
+      .from('payment_methods')
+      .update({ is_default: true })
+      .eq('id', paymentMethodId)
 
     return NextResponse.json({ success: true })
   } catch (error) {

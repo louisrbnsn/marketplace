@@ -23,7 +23,6 @@ export async function sendEmail({ to, subject, html }: EmailOptions) {
   // If Resend is configured, use it
   if (process.env.RESEND_API_KEY) {
     try {
-      // @ts-expect-error - Resend is optional and only loaded if configured
       const { Resend } = await import('resend')
       const resend = new Resend(process.env.RESEND_API_KEY)
       

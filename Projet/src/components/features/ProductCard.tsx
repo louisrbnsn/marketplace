@@ -26,8 +26,8 @@ export default function ProductCard({ product }: ProductCardProps) {
       id: product.id,
       title: product.title,
       price: product.price,
-      thumbnailUrl: product.thumbnailUrl || null,
-      storeId: product.storeId,
+      thumbnailUrl: product.thumbnail_url || null,
+      storeId: product.store_id,
       storeName: product.store?.name,
     })
   }
@@ -37,9 +37,9 @@ export default function ProductCard({ product }: ProductCardProps) {
       {/* Thumbnail */}
       <Link href={`/products/${product.slug}`}>
         <div className="relative aspect-video bg-slate-900/50 overflow-hidden">
-          {product.thumbnailUrl ? (
+          {product.thumbnail_url ? (
             <Image
-              src={normalizeImageUrl(product.thumbnailUrl) || '/placeholder.png'}
+              src={normalizeImageUrl(product.thumbnail_url) || '/placeholder.png'}
               alt={product.title}
               fill
               className="object-cover group-hover:scale-105 transition-transform duration-300"
@@ -52,7 +52,7 @@ export default function ProductCard({ product }: ProductCardProps) {
               </div>
             </div>
           )}
-          {product.isPremiumOnly && (
+          {product.is_premium_only && (
             <div className="absolute top-3 right-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-1 shadow-lg">
               <Sparkles className="w-3 h-3" />
               PREMIUM
@@ -100,10 +100,10 @@ export default function ProductCard({ product }: ProductCardProps) {
         <div className="flex items-center space-x-1 mt-3">
           <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
           <span className="text-sm font-semibold text-white">
-            {parseFloat(product.averageRating || '0').toFixed(1)}
+            {parseFloat(product.average_rating?.toString() || '0').toFixed(1)}
           </span>
           <span className="text-xs text-slate-500">
-            ({product.reviewCount || 0} reviews)
+            ({product.review_count || 0} reviews)
           </span>
         </div>
 

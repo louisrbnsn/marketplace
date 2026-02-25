@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { paymentMethods, users } from '@/lib/db/schema'
-import { eq, and } from 'drizzle-orm'
 
 /**
  * GET /api/payment-methods
@@ -19,13 +16,13 @@ export async function GET() {
     }
 
     // Get payment methods from database
-    const methods = await db
-      .select()
-      .from(paymentMethods)
-      .where(eq(paymentMethods.userId, authUser.id))
-      .orderBy(paymentMethods.createdAt)
+    const { data: methods } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .eq('user_id', authUser.id)
+      .order('created_at')
 
-    return NextResponse.json({ paymentMethods: methods })
+    return NextResponse.json({ paymentMethods: methods || [] })
   } catch (error) {
     console.error('Error fetching payment methods:', error)
     return NextResponse.json(
@@ -58,23 +55,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user from database
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.id, authUser.id))
-      .limit(1)
+    const { data: user } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authUser.id)
+      .single()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     // Ensure user has a Stripe customer ID
-    let stripeCustomerId = user.stripeCustomerId
+    let stripeCustomerId = user.stripe_customer_id
 
     if (!stripeCustomerId) {
       const customer = await stripe.customers.create({
         email: user.email,
-        name: user.fullName,
+        name: user.full_name,
         metadata: {
           userId: user.id,
         },
@@ -82,10 +79,10 @@ export async function POST(request: NextRequest) {
 
       stripeCustomerId = customer.id
 
-      await db
-        .update(users)
-        .set({ stripeCustomerId })
-        .where(eq(users.id, user.id))
+      await supabase
+        .from('users')
+        .update({ stripe_customer_id: stripeCustomerId })
+        .eq('id', user.id)
     }
 
     // Attach payment method to customer
@@ -97,12 +94,12 @@ export async function POST(request: NextRequest) {
     const stripePaymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId)
 
     // Check if this is the first payment method
-    const existingMethods = await db
-      .select()
-      .from(paymentMethods)
-      .where(eq(paymentMethods.userId, user.id))
+    const { data: existingMethods } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .eq('user_id', user.id)
 
-    const isFirstMethod = existingMethods.length === 0
+    const isFirstMethod = !existingMethods || existingMethods.length === 0
 
     // If this is the first method, set it as default in Stripe
     if (isFirstMethod) {
@@ -114,19 +111,20 @@ export async function POST(request: NextRequest) {
     }
 
     // Save payment method to database
-    const [newPaymentMethod] = await db
-      .insert(paymentMethods)
-      .values({
-        userId: user.id,
-        stripePaymentMethodId: paymentMethodId,
+    const { data: newPaymentMethod } = await supabase
+      .from('payment_methods')
+      .insert({
+        user_id: user.id,
+        stripe_payment_method_id: paymentMethodId,
         type: stripePaymentMethod.type,
-        cardBrand: stripePaymentMethod.card?.brand,
-        cardLast4: stripePaymentMethod.card?.last4,
-        cardExpMonth: stripePaymentMethod.card?.exp_month,
-        cardExpYear: stripePaymentMethod.card?.exp_year,
-        isDefault: isFirstMethod,
+        card_brand: stripePaymentMethod.card?.brand,
+        card_last4: stripePaymentMethod.card?.last4,
+        card_exp_month: stripePaymentMethod.card?.exp_month,
+        card_exp_year: stripePaymentMethod.card?.exp_year,
+        is_default: isFirstMethod,
       })
-      .returning()
+      .select()
+      .single()
 
     return NextResponse.json({
       success: true,

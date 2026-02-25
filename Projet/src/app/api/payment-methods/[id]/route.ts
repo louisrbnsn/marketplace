@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { stripe } from '@/lib/stripe'
-import { db } from '@/lib/db'
-import { paymentMethods, users } from '@/lib/db/schema'
-import { eq, and, sql } from 'drizzle-orm'
 
 /**
  * DELETE /api/payment-methods/[id]
@@ -24,16 +21,12 @@ export async function DELETE(
     const paymentMethodId = params.id
 
     // Get payment method from database
-    const [method] = await db
-      .select()
-      .from(paymentMethods)
-      .where(
-        and(
-          eq(paymentMethods.id, paymentMethodId),
-          eq(paymentMethods.userId, authUser.id)
-        )
-      )
-      .limit(1)
+    const { data: method } = await supabase
+      .from('payment_methods')
+      .select('*')
+      .eq('id', paymentMethodId)
+      .eq('user_id', authUser.id)
+      .single()
 
     if (!method) {
       return NextResponse.json(
@@ -44,42 +37,38 @@ export async function DELETE(
 
     // Detach payment method from Stripe
     try {
-      await stripe.paymentMethods.detach(method.stripePaymentMethodId)
+      await stripe.paymentMethods.detach(method.stripe_payment_method_id)
     } catch (stripeError: any) {
       // If payment method is already detached or doesn't exist in Stripe, continue
       console.log('Stripe error:', stripeError.message)
     }
 
     // If this was the default method, set another one as default
-    if (method.isDefault) {
-      const otherMethods = await db
-        .select()
-        .from(paymentMethods)
-        .where(
-          and(
-            eq(paymentMethods.userId, authUser.id),
-            sql`${paymentMethods.id} != ${paymentMethodId}`
-          )
-        )
+    if (method.is_default) {
+      const { data: otherMethods } = await supabase
+        .from('payment_methods')
+        .select('*')
+        .eq('user_id', authUser.id)
+        .neq('id', paymentMethodId)
         .limit(1)
 
-      if (otherMethods.length > 0) {
-        await db
-          .update(paymentMethods)
-          .set({ isDefault: true })
-          .where(eq(paymentMethods.id, otherMethods[0].id))
+      if (otherMethods && otherMethods.length > 0) {
+        await supabase
+          .from('payment_methods')
+          .update({ is_default: true })
+          .eq('id', otherMethods[0].id)
 
         // Update default in Stripe
-        const [user] = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, authUser.id))
-          .limit(1)
+        const { data: user } = await supabase
+          .from('users')
+          .select('stripe_customer_id')
+          .eq('id', authUser.id)
+          .single()
 
-        if (user?.stripeCustomerId) {
-          await stripe.customers.update(user.stripeCustomerId, {
+        if (user?.stripe_customer_id) {
+          await stripe.customers.update(user.stripe_customer_id, {
             invoice_settings: {
-              default_payment_method: otherMethods[0].stripePaymentMethodId,
+              default_payment_method: otherMethods[0].stripe_payment_method_id,
             },
           })
         }
@@ -87,9 +76,10 @@ export async function DELETE(
     }
 
     // Delete from database
-    await db
-      .delete(paymentMethods)
-      .where(eq(paymentMethods.id, paymentMethodId))
+    await supabase
+      .from('payment_methods')
+      .delete()
+      .eq('id', paymentMethodId)
 
     return NextResponse.json({ success: true })
   } catch (error) {
