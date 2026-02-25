@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createConnectAccount, createAccountLink } from '@/lib/stripe'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * POST /api/seller/onboard
  * Create or retrieve Stripe Connect onboarding link
