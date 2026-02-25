@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { updateProductRating, updateStoreRating } from '@/lib/review-utils'
 
+export const dynamic = 'force-dynamic'
+
 // GET /api/reviews?productId=xxx - Get all reviews for a product
 export async function GET(request: NextRequest) {
   try {

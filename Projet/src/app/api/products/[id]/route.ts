@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { updateProductSchema } from '@/utils/validation'
 import { mapProduct } from '@/utils/mappers'
 
+export const dynamic = 'force-dynamic'
+
 // GET - Get a single product
 export async function GET(
   request: NextRequest,

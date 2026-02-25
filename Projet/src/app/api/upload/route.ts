@@ -5,6 +5,8 @@ import { validateFileType, validateImageType } from '@/utils/validation'
 import { getUploadLimit, formatFileSize } from '@/utils/helpers'
 import { nanoid } from 'nanoid'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   try {
     // Check if storage is configured

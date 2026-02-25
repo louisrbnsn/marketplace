@@ -4,6 +4,8 @@ import { createProductSchema } from '@/utils/validation'
 import { slugify } from '@/utils/helpers'
 import { mapProduct } from '@/utils/mappers'
 
+export const dynamic = 'force-dynamic'
+
 // GET - Get all products with filters
 export async function GET(request: NextRequest) {
   try {

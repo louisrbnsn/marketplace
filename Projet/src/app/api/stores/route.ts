@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createStoreSchema } from '@/utils/validation'
 import { mapStore } from '@/utils/mappers'
 
+export const dynamic = 'force-dynamic'
+
 // GET - Get all stores or search stores
 export async function GET(request: NextRequest) {
   try {
