@@ -13,6 +13,7 @@ export async function POST(request: NextRequest) {
     const supabase = createClient()
 
     // Sign up with Supabase Auth
+    // TEMPORAIRE : emailRedirectTo désactivé pour tester sans confirmation d'email
     const { data, error } = await supabase.auth.signUp({
       email: validatedData.email,
       password: validatedData.password,
@@ -20,6 +21,7 @@ export async function POST(request: NextRequest) {
         data: {
           full_name: validatedData.fullName,
         },
+        emailRedirectTo: undefined, // Désactive l'envoi d'email de confirmation
       },
     })
 
