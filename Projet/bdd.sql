@@ -200,6 +200,20 @@ EXCEPTION
 END;
 $$;
 
+-- Fonction pour incrémenter le compteur d'achats d'un produit de manière atomique
+CREATE OR REPLACE FUNCTION increment_purchase_count(product_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  UPDATE products
+  SET 
+    purchase_count = COALESCE(purchase_count, 0) + 1,
+    updated_at = NOW()
+  WHERE id = product_id;
+END;
+$$;
+
 -- Trigger pour créer le profil automatiquement lors de l'inscription
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users

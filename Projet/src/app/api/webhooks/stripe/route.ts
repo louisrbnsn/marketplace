@@ -4,7 +4,7 @@ import { stripe } from '@/lib/stripe'
 import { supabaseAdmin } from '@/lib/supabase/admin'
 import { db } from '@/lib/db'
 import { orders, orderItems, users, products } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import Stripe from 'stripe'
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!
@@ -126,13 +126,9 @@ async function handlePaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
 
       // Update product purchase counts
       for (const itemData of orderItemsData) {
-        await supabaseAdmin
-          .from('products')
-          .update({
-            purchase_count: supabaseAdmin.raw('purchase_count + 1'),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', itemData.productId)
+        await supabaseAdmin.rpc('increment_purchase_count', {
+          product_id: itemData.productId
+        })
       }
 
       console.log('Order completed successfully:', orderId)
@@ -240,14 +236,9 @@ async function handleLegacyPaymentSuccess(paymentIntent: Stripe.PaymentIntent) {
         .single()
 
       // Update product purchase count
-      const currentCount = product.purchase_count || 0
-      await supabaseAdmin
-        .from('products')
-        .update({
-          purchase_count: currentCount + 1,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', product.id)
+      await supabaseAdmin.rpc('increment_purchase_count', {
+        product_id: product.id
+      })
 
       // Transfer funds to seller if they have a Stripe Connect account
       const { data: sellers } = await supabaseAdmin
